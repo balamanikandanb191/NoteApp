@@ -4,18 +4,39 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
+import os from 'os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
-const PORT = 3000;
-const DATA_FILE = path.join(__dirname, 'data', 'notes.json');
+const PORT = process.env.PORT || 3000;
+
+// Resolve writeable directory for data
+let dataDir = path.join(__dirname, 'data');
+try {
+  await fs.mkdir(dataDir, { recursive: true });
+  // Test write permission
+  const testFile = path.join(dataDir, '.write-test');
+  await fs.writeFile(testFile, '');
+  await fs.unlink(testFile);
+} catch (e) {
+  console.warn('⚠️ Local directory not writeable, trying /home/data (Azure persistent storage)...');
+  try {
+    dataDir = path.join('/home', 'data');
+    await fs.mkdir(dataDir, { recursive: true });
+    const testFile = path.join(dataDir, '.write-test');
+    await fs.writeFile(testFile, '');
+    await fs.unlink(testFile);
+  } catch (err) {
+    console.warn('⚠️ /home/data not writeable, falling back to temp directory...');
+    dataDir = path.join(os.tmpdir(), 'data');
+    await fs.mkdir(dataDir, { recursive: true });
+  }
+}
+const DATA_FILE = path.join(dataDir, 'notes.json');
 
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
-
-// Ensure data directory exists
-await fs.mkdir(path.join(__dirname, 'data'), { recursive: true });
 
 // Load notes from file
 async function loadNotes() {
